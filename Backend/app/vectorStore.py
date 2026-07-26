@@ -133,15 +133,31 @@ class VectorStoreManager:
     
     # Inicialización (carga o construye)
     
+    """def initialize(self) -> None:
+        ""
+        Punto de entrada principal. Intenta cargar el índice desde disco;
+        si no existe, lo construye desde los PDFs.
+        ""
+        if not self.load_index():
+            logger.info("Construyendo nuevo índice desde los documentos...")
+            self.build_index()"""
+
+    # Inicialización (carga o construye)
+    
     def initialize(self) -> None:
         """
         Punto de entrada principal. Intenta cargar el índice desde disco;
-        si no existe, lo construye desde los PDFs.
+        si no existe, lo construye UNA sola vez y lo guarda.
+        En los siguientes deploys ya no se vuelve a regenerar automáticamente.
         """
         if not self.load_index():
-            logger.info("Construyendo nuevo índice desde los documentos...")
+            # Cambio aplicado:
+            # Antes: solo lanzábamos un warning.
+            # Ahora: si no existe, lo construimos una vez y lo guardamos.
+            logger.info("No se encontró índice FAISS en disco. Construyendo uno nuevo...")
             self.build_index()
-
+        else:
+            logger.info("Índice FAISS cargado correctamente en el startup.")
 
     # Retriever para el agente
     

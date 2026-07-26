@@ -10,7 +10,7 @@ Backend/.env
 faiss_index/
 chat_history.json
 
-# Entorno virtual de Python
+# Ignorar entornos virtuales
 venv/
 .venv/
 env/
