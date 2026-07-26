@@ -1,0 +1,42 @@
+# ─────────────────────────────────────────────
+# .gitignore — BackEnd
+# ─────────────────────────────────────────────
+
+# Variables de entorno (nunca subir al repo)
+static/.env
+Backend/.env
+
+# Índices y bases de datos locales
+faiss_index/
+chat_history.json
+
+# Entorno virtual de Python
+venv/
+.venv/
+env/
+.env/
+Backend/.env
+
+# Cache de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Distribución y empaquetado
+dist/
+build/
+*.egg-info/
+
+# Logs
+*.log
+
+# IDEs
+.vscode/
+.idea/
+*.suo
+*.user
+
+# Sistema operativo
+.DS_Store
+Thumbs.db

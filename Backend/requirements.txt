@@ -1,0 +1,33 @@
+# ============================
+# Agente RAG - Soporte SEGA
+# ============================
+
+# API Framework
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.1
+
+# Rate limiting
+slowapi>=0.1.9
+ 
+# Google Gemini (LLM + Embeddings)
+google-generativeai>=0.7.2
+google-api-core>=2.19.0
+
+
+# LangChain (orquestación RAG)
+langchain>=0.2.6
+langchain-google-genai>=1.0.7
+langchain-community>=0.2.6
+langchain-text-splitters>=0.2.2
+
+# Vector Store local
+faiss-cpu>=1.12.0
+
+# Lectura de PDFs
+pymupdf>=1.24.0
+
+# Variables de entorno
+python-dotenv>=1.0.1
+
+# Utilidades
+pydantic>=2.7.4
