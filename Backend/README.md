@@ -1,300 +1,172 @@
-# 🎮 Agente RAG — Soporte Técnico SEGA
+# Asistente de Información Nutricional Abbott
 
-API de inteligencia artificial que responde preguntas en lenguaje natural sobre la documentación oficial de SEGA, usando un pipeline **RAG (Retrieval-Augmented Generation)** construido con **FastAPI**, **LangChain**, **FAISS** y **Google Gemini**.
-
----
-
-##  Tabla de Contenidos
-
-- [Arquitectura](#arquitectura)
-- [Tecnologías](#tecnologías)
-- [Estructura del Proyecto](#estructura-del-proyecto)
-- [Requisitos Previos](#requisitos-previos)
-- [Instalación](#instalación)
-- [Configuración](#configuración)
-- [Ejecución](#ejecución)
-- [Endpoints de la API](#endpoints-de-la-api)
-- [Pipeline RAG](#pipeline-rag)
-- [Gestión de Sesiones](#gestión-de-sesiones)
-- [Seguridad](#seguridad)
+Sistema inteligente backend desarrollado con **FastAPI**, **LangChain**, **Google Gemini (GenAI)** y **Telegram Bot**, diseñado para asistir a profesionales de la salud y usuarios respondiendo consultas nutricionales basadas estrictamente en las fichas técnicas y catálogos oficiales de productos Abbott mediante mensajería interactiva.
 
 ---
 
-## Arquitectura
+## Arquitectura de la Solución Implementada
 
-```
-Usuario → FastAPI → AgenteRAG
-                       ├── VectorStoreManager (FAISS + Embeddings Gemini)
-                       │       └── DocumentLoader (PyMuPDF → LangChain Documents)
-                       └── ChatGoogleGenerativeAI (Gemini 2.5 Flash)
-```
+```mermaid
+graph TD
+    %% Nodos Principales: Clientes
+    Client_REST[📱 Cliente REST / Frontend / HTTP]
+    Client_TG[💬 Usuario de Telegram]
 
-El flujo de una consulta es el siguiente:
+    subgraph API_Layer ["Capa de API, Entradas & Red"]
+        Main[app/main.py - Endpoints REST]
+        TGBot[app/telegram_bot.py - Bot Asíncrono Telegram]
+        Middleware[Middlewares: CORS / Rate Limiter / Auth]
+        LifeSpan[Lifespan Async Manager]
+    end
 
-1. El usuario envía una pregunta al endpoint `/chat`
-2. El retriever busca los fragmentos más relevantes en el índice FAISS
-3. Se construye el prompt con el contexto recuperado y el historial de la sesión
-4. Gemini genera la respuesta en español
-5. Se devuelve la respuesta junto con las fuentes utilizadas
+    subgraph Agent_Layer ["Capa de Orquestación e IA (agente.py)"]
+        Agent[AgenteRAG - Orquestador LCEL]
+        SessionMem[(Memoria RAM: Historiales por session_id / chat_id)]
+        CleanupTask[Tarea en Segundo Plano: Recolector de Basura / TTL]
+    end
 
----
+    subgraph RAG_Layer ["Capa de Conocimiento & VectorStore"]
+        VSM[app/vectorStore.py - VectorStoreManager]
+        FAISS_Index[(FAISS Index: Memoria RAM)]
+        Loader[app/document_loader.py - DocumentLoader]
+    end
 
-## Tecnologías
+    subgraph Config_Layer ["Capa de Configuración y Prompts"]
+        Config[app/config.py - Validación y Ajustes Globales]
+        Prompts[app/prompts.py - System Prompts y Guardrails]
+    end
 
-| Categoría | Librería / Servicio |
-|---|---|
-| Framework API | FastAPI + Uvicorn |
-| LLM | Google Gemini 2.5 Flash |
-| Embeddings | `gemini-embedding-001` |
-| Orquestación RAG | LangChain (LCEL) |
-| Vector Store | FAISS (local) |
-| Lectura de PDFs | PyMuPDF (`fitz`) |
-| Rate Limiting | SlowAPI |
-| Validación de datos | Pydantic v2 |
-| Variables de entorno | python-dotenv |
+    subgraph External_APIs ["Servicios Externos (Google GenAI API)"]
+        GeminiLLM[Google Gemini 3.5 Flash]
+        GeminiEmbed[Google Text Embeddings API]
+    end
 
----
+    subgraph Data_Storage ["Persistencia Local"]
+        PDFs[(Carpeta /data - PDFs Abbott)]
+        IndexFile[(Archivos faiss_index/)]
+    end
 
-## Estructura del Proyecto
+    %% Relaciones de Flujo
+    Client_REST -->|Petición HTTP / JSON| Middleware
+    Middleware --> Main
+    Client_TG -->|Mensajes / Comandos| TGBot
 
-```
-BackEnd/
-├── app/
-│   ├── main.py             # Aplicación FastAPI, endpoints y middleware
-│   ├── agente.py           # Clase AgenteRAG — lógica principal del chat
-│   ├── vectorStore.py      # Clase VectorStoreManager — FAISS + embeddings
-│   ├── document_loader.py  # Clase DocumentLoader — carga y parseo de PDFs
-│   ├── config.py           # Configuración global y variables de entorno
-│   └── prompts.py          # Prompts del sistema y mensajes predefinidos
-├── Documentacion/          # PDFs de soporte técnico de SEGA
-├── faiss_index/            # Índice FAISS persistido en disco (auto-generado)
-│   ├── index.faiss
-│   └── index.pkl
-├── static/
-│   ├── requirements.txt    # Dependencias del proyecto
-│   └── .env.example        # Plantilla de variables de entorno
-├── .env                    # Variables de entorno (no subir al repo)
-└── README.md
-```
+    Main -->|Consulta de Chat / Reset| Agent
+    TGBot -->|Invocación directa de consulta| Agent
 
----
+    LifeSpan -->|Inicializa al arrancar| VSM
+    LifeSpan -->|Inicializa componentes| Agent
 
-## Requisitos Previos
+    Agent -->|1. Búsqueda de similitud semántica| VSM
+    Agent -->|2. Inyecta reglas y guardrails| Prompts
+    Agent -->|3. Lee/Escribe historial activo| SessionMem
+    Agent -->|4. Genera respuesta con contexto| GeminiLLM
 
-- **Python** 3.11 o superior
-- **API Key de Google Gemini** — obtén la tuya gratis en [aistudio.google.com](https://aistudio.google.com/app/apikey)
-- (Opcional) **entorno virtual** — recomendado para aislar dependencias
+    CleanupTask -->|Limpia sesiones inactivas| SessionMem
 
----
+    VSM -->|Lee e ingesta documentos| Loader
+    VSM -->|Obtiene representaciones vectoriales| GeminiEmbed
+    VSM -->|Carga / Actualiza índice| FAISS_Index
+    FAISS_Index <.->|Lectura y Escritura en Disco| IndexFile
 
-## Instalación
+    Loader -->|Parsea y fragmenta en chunks| PDFs
 
-**1. Clona el repositorio y entra al directorio del backend:**
-
-```bash
-git clone <url-del-repo>
-cd BackEnd
+    Config -.->|Aplica configuración de entorno| Main
+    Config -.->|Configura credenciales y modelo| TGBot
+    Config -.->|Carga hiperparámetros LLM| Agent
+    Config -.->|Configura Chunk Size y rutas| VSM
 ```
 
-**2. Crea y activa un entorno virtual:**
+## Estructura de Directorios
 
-```bash
-# Crear entorno
+```
+Backend/
+├── app/                      # Núcleo de la aplicación
+│   ├── main.py               # FastAPI, rutas HTTP y middlewares
+│   ├── agente.py             # Lógica RAG y memoria por sesión
+│   ├── vectorStore.py        # FAISS y embeddings
+│   ├── document_loader.py    # Ingesta y parseo de PDFs
+│   ├── config.py             # Variables de entorno y configuración
+│   ├── prompts.py            # System Prompts y guardrails
+│   └── telegram_bot.py       # Bot asíncrono para Telegram
+├── data/                     # Repositorio documental fuente
+├── faiss_index/              # Índice vectorial local (auto-generado)
+├── static/                   # Recursos y plantillas
+├── .env                      # Variables de entorno locales
+├── requirements.txt          # Dependencias del proyecto
+└── README.md                 # Documentación técnica
+```
+
+- **Flujo RAG de Baja Latencia:** Las consultas se procesan mediante **LCEL** (*LangChain Expression Language*), combinando recuperación semántica vectorial local con control estricto de temperatura del LLM (`0.0`) para evitar alucinaciones en datos nutricionales críticos.
+- **Canales de Interacción Duales:** Soporte simultáneo para exposición mediante API REST (FastAPI) y un bot dedicado de Telegram (`app/telegram_bot.py`) que consume el núcleo del agente asegurando paridad en la experiencia conversacional.
+- **Aislamiento de Sesiones y Seguridad:** Gestión concurrente de historiales en memoria RAM protegida con cerrojos asíncronos (`asyncio.Lock`), validación robusta de esquemas con Pydantic v2 y protección contra abuso mediante *Rate Limiting*.
+
+## Tecnologías y Herramientas Utilizadas
+
+| **Categoría** | **Tecnología / Herramienta** | **Descripción y Propósito** |
+| --- | --- | --- |
+| **Framework Backend** | **FastAPI** | Servidor asíncrono de alto rendimiento con validación automática de esquemas mediante Pydantic v2. |
+| **Bot de Mensajería** | **python-telegram-bot** | Interfaz de chat asíncrona integrada para la interacción directa con el agente. |
+| **Orquestación de IA / RAG** | **LangChain / LangChain Google GenAI** | Framework modular para la construcción del flujo RAG y la gestión de cadenas de ejecución (*LCEL*). |
+| **Modelo de Lenguaje (LLM)** | **`gemini-3.5-flash`** | Motor generativo configurado mediante variables de entorno para respuestas rápidas y precisas. |
+| **Motor Vectorial** | **FAISS** | Indexación y búsqueda de similitud local de alta velocidad para la recuperación documental. |
+| **Seguridad y Resiliencia** | **SlowAPI / secrets** | Protección contra abusos mediante *Rate Limiting* y validación segura de tokens administrativos (`compare_digest`). |
+| **Despliegue y Contenedores** | **Uvicorn / Render** | Contenedorización optimizada para garantizar la portabilidad y el despliegue estable en la nube. |
+
+## Descripción Detallada de Componentes
+
+| **Componente / Archivo** | **Descripción Detallada** |
+| --- | --- |
+| **`app/main.py`** | Punto de entrada del servidor asíncrono. Gestiona el ciclo de vida del sistema, endpoints REST y protección contra abuso mediante *Rate Limiting*. |
+| **`app/agente.py`** | Orquestador del flujo RAG. Implementa LCEL y administra historiales conversacionales aislados por sesión con control de concurrencia. |
+| **`app/vectorStore.py`** | Administrador de la base de datos vectorial. Encapsula la indexación y recuperación semántica de alta precisión utilizando FAISS. |
+| **`app/document_loader.py`** | Módulo de procesamiento documental encargado de leer y fragmentar las fuentes PDF en chunks optimizados. |
+| **`app/config.py`** | Módulo centralizado para la carga tipada y validación de variables de entorno del sistema. |
+| **`app/prompts.py`** | Contiene los System Prompts, directrices clínicas y guardrails para asegurar respuestas deterministas. |
+| **`telegram_bot.py`** | Interfaz conversacional paralela para Telegram integrada directamente con el núcleo del agente RAG. |
+
+## Instrucciones de Ejecución del Proyecto
+
+### 1. Prerrequisitos
+
+- Python 3.11 o superior instalado.
+- Llave de API oficial de Google Generative AI (`GEMINI_API_KEY`).
+- Token de Bot de Telegram (`TELEGRAM_BOT_TOKEN`, opcional para canal de chat).
+
+### 2. Configuración del Entorno Local
+
+Clona el repositorio, crea un entorno virtual e instala las dependencias:
+
+```
 python -m venv venv
-
-# Activar en Linux/macOS
-source venv/bin/activate
-
-# Activar en Windows
-venv\Scripts\activate
+source venv/bin/activate  # En Windows: venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
-**3. Instala las dependencias:**
+### 3. Variables de Entorno
 
-```bash
-pip install -r static/requirements.txt
-```
-
----
-
-## Configuración
-
-**1. Crea el archivo `.env`** en la raíz de `BackEnd/` copiando la plantilla:
-
-```bash
-cp static/.env.example .env
-```
-
-**2. Completa las variables en `.env`:**
-
-```env
-# Clave de la API de Google Gemini
-GEMINI_API_KEY=tu_clave_aqui
-
-# Token de administrador para endpoints protegidos
-# Genera uno seguro con:  python -c "import secrets; print(secrets.token_urlsafe(32))"
-ADMIN_TOKEN=tu_token_aqui
-```
-
->  **Nunca subas el archivo `.env` al repositorio.** Está incluido en `.gitignore`.
-
----
-
-## Ejecución
-
-```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-Al arrancar, el servidor automáticamente:
-- Intenta cargar el índice FAISS desde disco (`faiss_index/`)
-- Si no existe, lo construye procesando los PDFs de `Documentacion/`
-
-Una vez iniciado, accede a la documentación interactiva en:
-
-- **Swagger UI:** [http://localhost:8000/docs](http://localhost:8000/docs)
-- **ReDoc:** [http://localhost:8000/redoc](http://localhost:8000/redoc)
-
----
-
-## Endpoints de la API
-
-### `GET /`
-Mensaje de bienvenida y estado general del servicio.
-
----
-
-### `GET /health`
-Verifica que el vector store y el agente estén operativos.
-
-**Respuesta:**
-```json
-{
-  "estado": "activo",
-  "vector_store_listo": true,
-  "agente_listo": true,
-  "mensaje": "Servicio completamente operativo"
-}
-```
-
----
-
-### `POST /chat`
-Envía una pregunta al agente RAG. Limitado a **15 peticiones por minuto** por IP.
-
-**Headers:**
-
-| Header | Tipo | Descripción |
-|---|---|---|
-| `x-session-id` | `string` (UUID) | Opcional. ID de sesión para mantener el hilo de conversación. Si no se envía, se genera uno nuevo. |
-
-**Body:**
-```json
-{
-  "pregunta": "¿Cómo puedo recuperar mi contraseña de SEGA?"
-}
-```
-
-**Respuesta:**
-```json
-{
-  "respuesta": "Para recuperar tu contraseña, ve a la página de inicio de sesión...",
-  "fuentes": ["Soporte de cuentas de SEGA.pdf"],
-  "session_id": "550e8400-e29b-41d4-a716-446655440000"
-}
-```
-
-> Guarda el `session_id` devuelto y envíalo en las siguientes peticiones para mantener el contexto de la conversación.
-
----
-
-### `POST /reset-chat`
-Limpia el historial de conversación de una sesión específica.
-
-**Headers:**
-
-| Header | Tipo | Descripción |
-|---|---|---|
-| `x-session-id` | `string` (UUID) | Requerido. ID de la sesión a limpiar. |
-
----
-
-### `POST /reset-index`
-Regenera el índice FAISS leyendo los PDFs de `Documentacion/`. Limitado a **3 peticiones por hora**.
-
-**Headers:**
-
-| Header | Tipo | Descripción |
-|---|---|---|
-| `x-admin-token` | `string` | Requerido. Token de administrador definido en `.env`. |
-
----
-
-## Pipeline RAG
+Crea un archivo `.env` en la raíz del proyecto basándote en la estructura de `static/.env.example`:
 
 ```
-PDFs (Documentacion/)
-        │
-        ▼
-  DocumentLoader          ← PyMuPDF extrae texto página por página
-        │
-        ▼
-RecursiveCharacterTextSplitter  ← chunks de 1200 chars, overlap 100
-        │
-        ▼
-  GoogleGenerativeAIEmbeddings  ← modelo gemini-embedding-001
-        │
-        ▼
-    FAISS Index             ← persistido en faiss_index/
-        │
-   [en cada /chat]
-        │
-        ▼
-  Retriever (top-5)         ← búsqueda por similitud coseno
-        │
-        ▼
-  ChatPromptTemplate        ← contexto + historial + pregunta
-        │
-        ▼
-  Gemini 2.5 Flash          ← temperatura 0.2, max 2048 tokens
-        │
-        ▼
-    Respuesta + Fuentes
+GEMINI_API_KEY=tu_clave_de_api_de_google_aqui
+TELEGRAM_BOT_TOKEN=tu_token_de_telegram_aqui
+ADMIN_TOKEN=un_token_secreto_seguro_para_indexar
 ```
 
-### Parámetros de configuración (`config.py`)
+### 4. Ejecución de los Servicios
 
-| Parámetro | Valor | Descripción |
-|---|---|---|
-| `LLM_MODEL` | `gemini-2.5-flash` | Modelo de lenguaje |
-| `EMBEDDING_MODEL` | `gemini-embedding-001` | Modelo de embeddings |
-| `CHUNK_SIZE` | `1200` | Tamaño de fragmento en caracteres |
-| `CHUNK_OVERLAP` | `100` | Solapamiento entre fragmentos |
-| `TOP_K_RESULTS` | `5` | Fragmentos recuperados por consulta |
-| `LLM_TEMPERATURE` | `0.2` | Determinismo de la respuesta |
-| `LLM_MAX_TOKENS` | `2048` | Tokens máximos por respuesta |
-
----
-
-## Gestión de Sesiones
-
-El historial de conversación se almacena **en memoria por proceso**, identificado por un UUID de sesión.
-
-| Parámetro | Valor | Descripción |
-|---|---|---|
-| `MAX_HISTORY_TURNS` | `5` | Turnos máximos de conversación en memoria |
-| `SESSION_TTL_SECONDS` | `3600` | Sesiones expiran tras 1 hora de inactividad |
-| `CLEANUP_INTERVAL_SECONDS` | `600` | El recolector de basura corre cada 10 minutos |
-
-> **Nota de escalabilidad:** Si el servicio corre con múltiples workers (`--workers > 1`) o en varias instancias, cada proceso tendrá su propio historial desincronizado. Para ese escenario, reemplaza el dict en memoria por un backend compartido como **Redis**.
-
----
-
-## Seguridad
-
-- **Rate limiting** en `/chat` (15/min) y `/reset-index` (3/hora) mediante SlowAPI
-- **CORS** restringido a `localhost:3000` y `localhost:4200`
-- **Validación de session_id** — solo acepta UUIDs válidos
-- **Token de administrador** comparado con `secrets.compare_digest` para prevenir ataques de timing
-- **Longitud máxima** de pregunta: 500 caracteres
-- Las claves sensibles se cargan exclusivamente desde el archivo `.env`
+- **Para iniciar la API REST (FastAPI):**
+    
+    ```
+    python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+    ```
+    
+    *(Documentación interactiva* (Swagger UI) *en `http://localhost:8000/docs`)*
+    
+    *(Documentación alternativa* (ReDoc) *en `http://localhost:8000/redoc`)*
+    
+- **Para iniciar el Bot de Telegram:**
+    
+    ```
+    python -m app.telegram_bot
+    ```
