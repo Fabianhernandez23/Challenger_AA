@@ -40,8 +40,17 @@ if not ADMIN_TOKEN:
         "   Generalo con: python -c \"import secrets; print(secrets.token_urlsafe(32))\"\n"
         "   y agregalo como ADMIN_TOKEN=el_valor_generado"
     )
- 
 
+# Configuración del bot de Telegram
+
+TELEGRAM_BOT_TOKEN: str = _get_env_clean("TELEGRAM_BOT_TOKEN")
+
+if not TELEGRAM_BOT_TOKEN:
+    raise EnvironmentError(
+        "No se encontró TELEGRAM_BOT_TOKEN en el archivo .env o en las variables de entorno.\n"
+        f"  Ruta esperada: {ENV_FILE}\n"
+        "  Obtén tu token creando un bot con @BotFather en Telegram."
+    )
 
 # Modelos de Google Gemini
 

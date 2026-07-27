@@ -16,6 +16,7 @@ venv/
 env/
 .env/
 Backend/.env
+.env
 
 # Cache de Python
 __pycache__/

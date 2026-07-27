@@ -20,7 +20,7 @@ from slowapi.errors import RateLimitExceeded
 from app.agente import AgenteRAG
 from app.prompts import WELCOME_MESSAGE
 from app.vectorStore import VectorStoreManager
-
+from app.telegram_bot import TelegramBotManager #<-- 1. Importado del nuevo módulo 
 
 # Logging configuración
 
@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 
 vsm = VectorStoreManager()
 agente = AgenteRAG(vsm)
+telegram_bot = TelegramBotManager(agente) #<-- 2. Instancia del gestor del bot de Telegram
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -50,12 +51,14 @@ async def lifespan(app: FastAPI):
     try:
         await asyncio.to_thread(vsm.initialize) 
         await agente.initialize() 
+        await telegram_bot.initialize()  # <-- 3. Arranca el bot de Telegram al iniciar el servidor
         logger.info("Servicio listo para recibir consultas")
     except Exception as e:
         logger.critical(f"Error crítico durante el arranque: {e}", exc_info=True)
         raise
     yield
     logger.info("Deteniendo servidores y limpiando tareas en segundo plano...")
+    await telegram_bot.shutdown()  # <-- 4. Apaga el bot limpiamente al detener la aplicación
     await agente.shutdown()
     logger.info("Servidor detenido correctamente.")
 
@@ -257,9 +260,8 @@ async def root():
     }
 
 
-# ─────────────────────────────────────────────
 # Punto de entrada directo
-# ─────────────────────────────────────────────
+
 if __name__ == "__main__":
     uvicorn.run(
         "app.main:app",
