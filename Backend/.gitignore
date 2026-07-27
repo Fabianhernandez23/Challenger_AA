@@ -1,6 +1,4 @@
-# ─────────────────────────────────────────────
 # .gitignore — BackEnd
-# ─────────────────────────────────────────────
 
 # Variables de entorno (nunca subir al repo)
 static/.env
