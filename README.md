@@ -1,6 +1,13 @@
-# Asistente de Información Nutricional Abbott
+# Agente RAG - Asistente de Información Nutricional Abbott
 
 Sistema inteligente backend desarrollado con **FastAPI**, **LangChain**, **Google Gemini (GenAI)** y **Telegram Bot**, diseñado para asistir a profesionales de la salud y usuarios respondiendo consultas nutricionales basadas estrictamente en las fichas técnicas y catálogos oficiales de productos Abbott mediante mensajería interactiva.
+
+## 🔗 Enlaces de Acceso Directo
+
+* 🤖 **Bot de Telegram:** [@Abbott_asistente_bot](https://t.me/Abbott_asistente_bot) — *Interacción directa por chat para consultas nutricionales.*
+* 📄 **Documentación Swagger UI:** [https://agente-rag-backend-api.onrender.com/docs](https://agente-rag-backend-api.onrender.com/docs)
+* 🔴 **Documentación ReDoc:** [https://agente-rag-backend-api.onrender.com/redoc](https://agente-rag-backend-api.onrender.com/redoc)
+* 🟢 **Estado del Servicio (Health Check):** [https://agente-rag-backend-api.onrender.com/health](https://agente-rag-backend-api.onrender.com/health)
 
 ---
 
